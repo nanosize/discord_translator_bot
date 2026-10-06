@@ -40,21 +40,35 @@ DeepL は既定で Free API を使います。Pro APIの場合は `DEEPL_API_URL
 
 ## Docker
 
-`compose.yaml` でBotをコンテナとして実行できます。`.env` はComposeの補間に使われ、イメージには含まれません。設定ファイルは名前付きボリューム `bot-config` に保持します。リアクション翻訳のコマンド設定もこのボリューム内に保存されます。
+公開イメージは [`nanosize23/discord-translator-bot`](https://hub.docker.com/r/nanosize23/discord-translator-bot) です。`compose.yaml` はこのイメージを使います。`.env` やAPIキーはイメージに含まれません。
+
+### Docker Compose
 
 ```sh
 cp .env.example .env
 # .env に DISCORD_TOKEN と選択したプロバイダのキーを設定
-docker build -t discord-translator-bot:local .
-docker compose -p discord-translator-bot -f compose.yaml up -d
-docker compose -f compose.yaml logs -f
+docker compose pull
+docker compose up -d
+docker compose logs -f
 ```
 
-Portainerでは **Stacks → Add stack → Repository** からこのリポジトリを選び、`compose.yaml` をスタックファイルとして指定します。デプロイ先のDocker環境に `discord-translator-bot:local` イメージを先に用意し、**Environment variables** に `.env.example` の `DISCORD_TOKEN` と、使用する翻訳プロバイダの設定値を登録してデプロイしてください。Portainerのスタック変数はComposeの `${...}` に渡されます。コンテナは自動再起動が有効で、`bot-config` ボリュームが設定を保持します。
+### Portainer
 
-既存の `config.yml` を使う場合は、初回起動前に内容を `bot-config` ボリュームへコピーしてください。新規ボリュームはイメージ内の `config.example.yml` から初期化されます。
+1. **Stacks → Add stack → Repository** を開き、このGitHubリポジトリとブランチ `main` を指定します。
+2. Compose pathに `compose.yaml` を入力します。
+3. **Environment variables** に `DISCORD_TOKEN`、`TRANSLATION_PROVIDER`、選んだ翻訳プロバイダのAPIキーを登録してデプロイします。
+
+プロバイダ名と必須キーは上の「プロバイダの設定」表を参照してください。Portainerはこのリポジトリの `.env` を自動では読み込まないため、値はStackの環境変数として設定します。`bot-config` 名前付きボリュームが設定ファイルを保持し、コンテナを更新しても設定は残ります。
+
+新しいイメージを反映する場合はStackの **Pull and redeploy** を実行します。Docker Composeでは `docker compose pull && docker compose up -d` を実行してください。
+
+新しい `bot-config` ボリュームはイメージ内の `config.example.yml` から初期化されます。既存の `config.yml` を使う場合は、初回起動前に内容をボリュームへコピーしてください。`.env` や実際の設定ファイルをイメージに焼き込まないでください。
 
 Discord Developer PortalでMessage Content Intentを有効にしてください。Botには対象チャンネルの閲覧、メッセージ履歴の閲覧、メッセージ送信権限が必要です。フォーラムへの翻訳投稿にはフォーラム投稿権限も必要です。
+
+## ライセンス
+
+このプロジェクトは [GNU General Public License v3.0 only](LICENSE) の下で公開しています。
 
 ## systemd
 

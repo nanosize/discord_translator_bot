@@ -1,6 +1,6 @@
 services:
   discord-translator-bot:
-    image: discord-translator-bot:local
+    image: nanosize23/discord-translator-bot:latest
     container_name: discord-translator-bot
     restart: unless-stopped
     init: true
