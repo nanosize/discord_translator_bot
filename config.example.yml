@@ -1,0 +1,5 @@
+discord_token: "YOUR_DISCORD_BOT_TOKEN"
+deepl_api_key: "YOUR_DEEPL_API_KEY"
+channel_mappings: []
+flag_map: {}
+max_per_minute: 30

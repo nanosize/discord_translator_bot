@@ -1,0 +1,18 @@
+[Unit]
+Description=Discord Translate Bot
+After=network.target
+
+[Service]
+Type=simple
+User=discordbot
+WorkingDirectory=/home/discordbot/your_project
+ExecStart=/home/discordbot/your_project/venv/bin/python3 bot.py
+Restart=on-failure
+RestartSec=10
+# 標準出力・エラーをログに流す
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=discord-translate-bot
+
+[Install]
+WantedBy=multi-user.target
