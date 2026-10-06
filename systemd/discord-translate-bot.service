@@ -5,8 +5,10 @@ After=network.target
 [Service]
 Type=simple
 User=discordbot
-WorkingDirectory=/home/discordbot/your_project
-ExecStart=/home/discordbot/your_project/venv/bin/python3 bot.py
+WorkingDirectory=/opt/discord_translator_bot
+EnvironmentFile=/opt/discord_translator_bot/.env
+Environment=CONFIG_FILE=/opt/discord_translator_bot/config.yml
+ExecStart=/opt/discord_translator_bot/discord-translator-bot
 Restart=on-failure
 RestartSec=10
 # 標準出力・エラーをログに流す

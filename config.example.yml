@@ -1,5 +1,20 @@
-discord_token: "YOUR_DISCORD_BOT_TOKEN"
-deepl_api_key: "YOUR_DEEPL_API_KEY"
 channel_mappings: []
+# Example:
+# channel_mappings:
+#   - source_channel_id: 123456789012345678
+#     target_channel_id: 234567890123456789
+# IDs may refer to regular channels or forum channels. Messages in a source
+# forum's posts are translated; a forum target creates one translated post per
+# source message.
+excluded_channel_ids: []
+# Channels where all bot translation features are disabled. Excluding a forum
+# also excludes all of its posts/threads.
+# Example:
+# excluded_channel_ids:
+#   - 345678901234567890
 flag_map: {}
+# Example:
+# flag_map:
+#   "🇯🇵": "JA"
+#   "🇺🇸": "EN"
 max_per_minute: 30

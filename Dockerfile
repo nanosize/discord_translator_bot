@@ -1,18 +1,15 @@
-FROM python:3.10-slim
+FROM golang:1.27-alpine AS build
 
-# システム依存関係（必要に応じて追加）
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-  && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN apk add --no-cache ca-certificates
+COPY go.mod go.sum *.go ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /discord-translator-bot .
 
+FROM scratch
 WORKDIR /app
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build /discord-translator-bot /discord-translator-bot
 
-# 依存関係インストール
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# アプリケーションコード
-COPY . .
-
-# コンテナ起動時に bot を起動
-CMD ["python", "bot.py"]
+ENV CONFIG_FILE=/app/config.yml
+USER 65532:65532
+ENTRYPOINT ["/discord-translator-bot"]

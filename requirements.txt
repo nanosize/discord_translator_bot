@@ -1,3 +1,1 @@
-discord.py>=2.5.1
-requests>=2.31.0
-PyYAML>=6.0
+# This bot has migrated to Go. See go.mod for its dependencies.

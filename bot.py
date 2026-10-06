@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+raise SystemExit("This bot has migrated to Go. Build and run it with Docker or go run .")
+
 # -*- coding: utf-8 -*-
 """
 Discord 自動翻訳 Bot
