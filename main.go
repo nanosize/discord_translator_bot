@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,10 +22,11 @@ type channelMapping struct {
 }
 
 type botConfig struct {
-	ChannelMappings    []channelMapping  `yaml:"channel_mappings"`
-	ExcludedChannelIDs []uint64          `yaml:"excluded_channel_ids"`
-	FlagMap            map[string]string `yaml:"flag_map"`
-	MaxPerMinute       int               `yaml:"max_per_minute"`
+	ChannelMappings            []channelMapping  `yaml:"channel_mappings"`
+	ExcludedChannelIDs         []uint64          `yaml:"excluded_channel_ids"`
+	ReactionDisabledChannelIDs []uint64          `yaml:"reaction_translation_disabled_channel_ids"`
+	FlagMap                    map[string]string `yaml:"flag_map"`
+	MaxPerMinute               int               `yaml:"max_per_minute"`
 }
 
 type rateLimiter struct {
@@ -36,11 +38,14 @@ type rateLimiter struct {
 }
 
 type application struct {
-	config     botConfig
-	translator *Translator
-	limiter    *rateLimiter
-	channelMu  sync.Mutex
-	channels   map[string]*discordgo.Channel
+	config           botConfig
+	translator       *Translator
+	limiter          *rateLimiter
+	channelMu        sync.Mutex
+	channels         map[string]*discordgo.Channel
+	configMu         sync.RWMutex
+	configPath       string
+	reactionDisabled map[string]struct{}
 }
 
 func loadDotEnv() error {
@@ -91,10 +96,7 @@ func loadDotEnv() error {
 }
 
 func loadConfig() (botConfig, error) {
-	path := os.Getenv("CONFIG_FILE")
-	if path == "" {
-		path = "config.yml"
-	}
+	path := configFilePath()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return botConfig{}, fmt.Errorf("read config file: %w", err)
@@ -132,6 +134,13 @@ func loadConfig() (botConfig, error) {
 		config.MaxPerMinute = limit
 	}
 	return config, nil
+}
+
+func configFilePath() string {
+	if path := os.Getenv("CONFIG_FILE"); path != "" {
+		return path
+	}
+	return "config.yml"
 }
 
 func newRateLimiter(limit int) *rateLimiter {
@@ -210,6 +219,63 @@ func (a *application) isExcluded(s *discordgo.Session, channelID string) bool {
 	return false
 }
 
+func (a *application) isReactionTranslationEnabled(s *discordgo.Session, channelID string) bool {
+	ids := []string{channelID}
+	if channel, err := a.getChannel(s, channelID); err == nil && channel != nil && channel.IsThread() && channel.ParentID != "" {
+		ids = append(ids, channel.ParentID)
+	}
+	a.configMu.RLock()
+	defer a.configMu.RUnlock()
+	for _, id := range ids {
+		if _, disabled := a.reactionDisabled[id]; disabled {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *application) setReactionTranslationEnabled(channelID string, enabled bool) error {
+	id, err := strconv.ParseUint(channelID, 10, 64)
+	if err != nil || id == 0 {
+		return fmt.Errorf("invalid channel ID")
+	}
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	updatedDisabled := make(map[string]struct{}, len(a.reactionDisabled)+1)
+	for disabledID := range a.reactionDisabled {
+		updatedDisabled[disabledID] = struct{}{}
+	}
+	if enabled {
+		delete(updatedDisabled, channelID)
+	} else {
+		updatedDisabled[channelID] = struct{}{}
+	}
+	ids := make([]uint64, 0, len(updatedDisabled))
+	for disabledID := range updatedDisabled {
+		parsed, parseErr := strconv.ParseUint(disabledID, 10, 64)
+		if parseErr == nil {
+			ids = append(ids, parsed)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	updated := a.config
+	updated.ReactionDisabledChannelIDs = ids
+	data, err := yaml.Marshal(updated)
+	if err != nil {
+		return fmt.Errorf("serialize configuration: %w", err)
+	}
+	info, err := os.Stat(a.configPath)
+	if err != nil {
+		return fmt.Errorf("read configuration metadata: %w", err)
+	}
+	if err := os.WriteFile(a.configPath, data, info.Mode().Perm()); err != nil {
+		return fmt.Errorf("save configuration: %w", err)
+	}
+	a.reactionDisabled = updatedDisabled
+	a.config.ReactionDisabledChannelIDs = ids
+	return nil
+}
+
 func (a *application) sourceChannelID(s *discordgo.Session, channelID string) string {
 	channel, err := a.getChannel(s, channelID)
 	if err == nil && channel != nil && channel.IsThread() && channel.ParentID != "" {
@@ -219,6 +285,7 @@ func (a *application) sourceChannelID(s *discordgo.Session, channelID string) st
 }
 
 func (a *application) onReady(s *discordgo.Session, _ *discordgo.Ready) {
+	manageGuild := int64(discordgo.PermissionManageGuild)
 	commands := []*discordgo.ApplicationCommand{
 		{
 			Name: "translate", Description: "テキスト翻訳",
@@ -231,6 +298,18 @@ func (a *application) onReady(s *discordgo.Session, _ *discordgo.Ready) {
 			Name: "detect", Description: "言語検出",
 			Options: []*discordgo.ApplicationCommandOption{
 				{Type: discordgo.ApplicationCommandOptionString, Name: "text", Description: "本文", Required: true, MaxLength: 4000},
+			},
+		},
+		{
+			Name: "reaction-translate", Description: "チャンネルのリアクション翻訳を管理",
+			DefaultMemberPermissions: &manageGuild,
+			Options: []*discordgo.ApplicationCommandOption{
+				{Name: "enable", Description: "このチャンネルのリアクション翻訳を有効化", Type: discordgo.ApplicationCommandOptionSubCommand,
+					Options: []*discordgo.ApplicationCommandOption{{Name: "channel", Description: "設定するチャンネル", Type: discordgo.ApplicationCommandOptionChannel, Required: true}}},
+				{Name: "disable", Description: "このチャンネルのリアクション翻訳を無効化", Type: discordgo.ApplicationCommandOptionSubCommand,
+					Options: []*discordgo.ApplicationCommandOption{{Name: "channel", Description: "設定するチャンネル", Type: discordgo.ApplicationCommandOptionChannel, Required: true}}},
+				{Name: "status", Description: "このチャンネルの現在の設定を確認", Type: discordgo.ApplicationCommandOptionSubCommand,
+					Options: []*discordgo.ApplicationCommandOption{{Name: "channel", Description: "確認するチャンネル", Type: discordgo.ApplicationCommandOptionChannel, Required: true}}},
 			},
 		},
 	}
@@ -306,6 +385,9 @@ func (a *application) onReaction(s *discordgo.Session, event *discordgo.MessageR
 	if a.isExcluded(s, event.ChannelID) {
 		return
 	}
+	if !a.isReactionTranslationEnabled(s, event.ChannelID) {
+		return
+	}
 	emoji := event.Emoji.Name
 	target := a.config.FlagMap[emoji]
 	if target == "" || !everyoneCanSend(s, event.ChannelID, event.GuildID) {
@@ -379,6 +461,11 @@ func (a *application) onInteraction(s *discordgo.Session, event *discordgo.Inter
 	if event == nil || event.ApplicationCommandData().Name == "" {
 		return
 	}
+	data := event.ApplicationCommandData()
+	if data.Name == "reaction-translate" {
+		a.handleReactionTranslateCommand(s, event, data)
+		return
+	}
 	if a.isExcluded(s, event.ChannelID) {
 		_ = s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -386,7 +473,6 @@ func (a *application) onInteraction(s *discordgo.Session, event *discordgo.Inter
 		})
 		return
 	}
-	data := event.ApplicationCommandData()
 	var text, target string
 	for _, option := range data.Options {
 		switch option.Name {
@@ -430,6 +516,83 @@ func (a *application) onInteraction(s *discordgo.Session, event *discordgo.Inter
 	}
 }
 
+func (a *application) handleReactionTranslateCommand(s *discordgo.Session, event *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	respond := func(content string) {
+		if err := s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{Content: content, Flags: discordgo.MessageFlagsEphemeral},
+		}); err != nil {
+			log.Printf("Could not respond to reaction translation settings command: %v", err)
+		}
+	}
+	if event.GuildID == "" || event.Member == nil {
+		respond("このコマンドはサーバー内で使用してください。")
+		return
+	}
+	permissions := event.Member.Permissions
+	if permissions&discordgo.PermissionAdministrator == 0 && permissions&discordgo.PermissionManageGuild == 0 {
+		respond("この設定を変更するにはサーバー管理権限が必要です。")
+		return
+	}
+	if len(data.Options) == 0 {
+		respond("enable、disable、status のいずれかを指定してください。")
+		return
+	}
+	subcommand := data.Options[0]
+	var channelID string
+	for _, option := range subcommand.Options {
+		if option.Name == "channel" && option.Type == discordgo.ApplicationCommandOptionChannel {
+			channelID = option.Value.(string)
+			break
+		}
+	}
+	if channelID == "" {
+		respond("チャンネルを指定してください。")
+		return
+	}
+	channel := a.getChannelOrID(s, channelID)
+	switch subcommand.Name {
+	case "enable", "disable":
+		enabled := subcommand.Name == "enable"
+		if enabled && a.isExcluded(s, channelID) {
+			respond(fmt.Sprintf("%s は excluded_channel_ids に登録されているため、先に全翻訳の除外設定を解除してください。", channel))
+			return
+		}
+		if err := a.setReactionTranslationEnabled(channelID, enabled); err != nil {
+			log.Printf("Could not save reaction translation setting: %v", err)
+			respond("設定を保存できませんでした。設定ファイルの書き込み権限を確認してください。")
+			return
+		}
+		state := "無効"
+		if enabled {
+			state = "有効"
+		}
+		respond(fmt.Sprintf("%s のリアクション翻訳を%sにしました。", channel, state))
+	case "status":
+		if a.isExcluded(s, channelID) {
+			respond(fmt.Sprintf("%s は excluded_channel_ids に登録されているため、リアクション翻訳は無効です。", channel))
+			return
+		}
+		a.configMu.RLock()
+		_, disabled := a.reactionDisabled[channelID]
+		a.configMu.RUnlock()
+		state := "有効"
+		if disabled {
+			state = "無効"
+		}
+		respond(fmt.Sprintf("%s のリアクション翻訳は現在%sです。", channel, state))
+	default:
+		respond("未対応の操作です。")
+	}
+}
+
+func (a *application) getChannelOrID(s *discordgo.Session, channelID string) string {
+	if channel, err := a.getChannel(s, channelID); err == nil && channel.Name != "" {
+		return "#" + channel.Name
+	}
+	return "<#" + channelID + ">"
+}
+
 func limitDiscordText(text string, maxRunes int) string {
 	runes := []rune(text)
 	if len(runes) <= maxRunes {
@@ -452,6 +615,10 @@ func main() {
 	}
 	app := &application{
 		config: config, translator: newTranslator(), limiter: newRateLimiter(config.MaxPerMinute), channels: make(map[string]*discordgo.Channel),
+		configPath: configFilePath(), reactionDisabled: make(map[string]struct{}),
+	}
+	for _, id := range config.ReactionDisabledChannelIDs {
+		app.reactionDisabled[strconv.FormatUint(id, 10)] = struct{}{}
 	}
 	if !app.translator.configured() {
 		log.Fatalf("translation provider %q is unsupported or missing required settings; check TRANSLATION_PROVIDER and the provider variables in .env", app.translator.Provider)

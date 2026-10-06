@@ -34,6 +34,8 @@ DeepL は既定で Free API を使います。Pro APIの場合は `DEEPL_API_URL
 - `flag_map`: 国旗絵文字から翻訳先言語コードへの対応です。絵文字は完全一致で判定します。
 - `max_per_minute`: 自動翻訳とリアクション翻訳の合計上限です。`MAX_PER_MINUTE` 環境変数で上書きできます。
 
+サーバー管理権限を持つ人は `/reaction-translate` でチャンネルごとのリアクション翻訳を切り替えたり、状態を確認できます。例: `/reaction-translate disable channel:#雑談`、`/reaction-translate enable channel:#general`、`/reaction-translate status channel:#general`。設定は `reaction_translation_disabled_channel_ids` に保存されます。このコマンドで設定する場合、Botが `config.yml` を書き込める必要があります。`excluded_channel_ids` に登録されたチャンネルでは、リアクション翻訳も常に無効です。
+
 マッピングの送信元にフォーラムを指定すると、フォーラム投稿内のメッセージを翻訳します。送信先が通常のチャンネルならそこへ転送し、送信先がフォーラムならメッセージごとに翻訳投稿を作成します。フォーラム投稿の作成には、Botに投稿先フォーラムで投稿権限が必要です。
 
 ## Docker

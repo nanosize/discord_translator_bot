@@ -12,6 +12,9 @@ excluded_channel_ids: []
 # Example:
 # excluded_channel_ids:
 #   - 345678901234567890
+# The /reaction-translate command can disable reactions for individual channels.
+# Its settings are saved here automatically. A forum ID applies to its threads.
+reaction_translation_disabled_channel_ids: []
 flag_map: {}
 # Example:
 # flag_map:
