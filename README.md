@@ -1,5 +1,9 @@
 # Discord 翻訳 Bot
 
+<p align="center">
+  <img src="assets/icon.png" alt="Discord 翻訳 Bot アイコン" width="160">
+</p>
+
 Go 製の Discord 翻訳 Bot です。チャンネル間の自動翻訳、国旗リアクション翻訳、`/translate`、`/detect` に対応しています。翻訳先は Google Cloud Translation、DeepL、Azure Translator、Gemini、OpenAI、OpenAI 互換APIから1つ選びます。
 
 ## セットアップ
