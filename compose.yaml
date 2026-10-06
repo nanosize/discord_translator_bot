@@ -1,0 +1,38 @@
+services:
+  discord-translator-bot:
+    image: discord-translator-bot:local
+    container_name: discord-translator-bot
+    restart: unless-stopped
+    init: true
+    user: "65534:65534"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CONFIG_FILE: /data/config.yml
+      DISCORD_TOKEN: "${DISCORD_TOKEN:?Set DISCORD_TOKEN in .env or Portainer stack environment}"
+      TRANSLATION_PROVIDER: "${TRANSLATION_PROVIDER:-google}"
+      GOOGLE_TRANSLATE_API_KEY: "${GOOGLE_TRANSLATE_API_KEY:-}"
+      GOOGLE_TRANSLATE_URL: "${GOOGLE_TRANSLATE_URL:-}"
+      DEEPL_AUTH_KEY: "${DEEPL_AUTH_KEY:-}"
+      DEEPL_API_URL: "${DEEPL_API_URL:-}"
+      AZURE_TRANSLATOR_KEY: "${AZURE_TRANSLATOR_KEY:-}"
+      AZURE_TRANSLATOR_REGION: "${AZURE_TRANSLATOR_REGION:-}"
+      AZURE_TRANSLATOR_URL: "${AZURE_TRANSLATOR_URL:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      GEMINI_MODEL: "${GEMINI_MODEL:-}"
+      GEMINI_API_BASE_URL: "${GEMINI_API_BASE_URL:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-}"
+      OPENAI_CHAT_COMPLETIONS_URL: "${OPENAI_CHAT_COMPLETIONS_URL:-}"
+      OPENAI_COMPATIBLE_API_KEY: "${OPENAI_COMPATIBLE_API_KEY:-}"
+      OPENAI_COMPATIBLE_MODEL: "${OPENAI_COMPATIBLE_MODEL:-}"
+      OPENAI_COMPATIBLE_BASE_URL: "${OPENAI_COMPATIBLE_BASE_URL:-}"
+      MAX_PER_MINUTE: "${MAX_PER_MINUTE:-}"
+    volumes:
+      - bot-config:/data
+
+volumes:
+  bot-config:

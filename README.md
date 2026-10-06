@@ -40,15 +40,19 @@ DeepL は既定で Free API を使います。Pro APIの場合は `DEEPL_API_URL
 
 ## Docker
 
+`compose.yaml` でBotをコンテナとして実行できます。`.env` はComposeの補間に使われ、イメージには含まれません。設定ファイルは名前付きボリューム `bot-config` に保持します。リアクション翻訳のコマンド設定もこのボリューム内に保存されます。
+
 ```sh
 cp .env.example .env
-cp config.example.yml config.yml
-# .env と config.yml を編集
+# .env に DISCORD_TOKEN と選択したプロバイダのキーを設定
 docker build -t discord-translator-bot:local .
-docker run --rm --env-file .env \
-  -v "$PWD/config.yml:/app/config.yml:ro" \
-  discord-translator-bot:local
+docker compose -p discord-translator-bot -f compose.yaml up -d
+docker compose -f compose.yaml logs -f
 ```
+
+Portainerでは **Stacks → Add stack → Repository** からこのリポジトリを選び、`compose.yaml` をスタックファイルとして指定します。デプロイ先のDocker環境に `discord-translator-bot:local` イメージを先に用意し、**Environment variables** に `.env.example` の `DISCORD_TOKEN` と、使用する翻訳プロバイダの設定値を登録してデプロイしてください。Portainerのスタック変数はComposeの `${...}` に渡されます。コンテナは自動再起動が有効で、`bot-config` ボリュームが設定を保持します。
+
+既存の `config.yml` を使う場合は、初回起動前に内容を `bot-config` ボリュームへコピーしてください。新規ボリュームはイメージ内の `config.example.yml` から初期化されます。
 
 Discord Developer PortalでMessage Content Intentを有効にしてください。Botには対象チャンネルの閲覧、メッセージ履歴の閲覧、メッセージ送信権限が必要です。フォーラムへの翻訳投稿にはフォーラム投稿権限も必要です。
 
