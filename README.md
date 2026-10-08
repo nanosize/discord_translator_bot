@@ -1,56 +1,61 @@
-# Discord 翻訳 Bot
+# Discord Translator Bot
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/nanosize/discord_translator_bot/main/assets/icon.png" alt="Discord 翻訳 Bot アイコン" width="160">
+  <img src="https://raw.githubusercontent.com/nanosize/discord_translator_bot/main/assets/icon.png" alt="Discord Translator Bot icon" width="160">
 </p>
 
-Go 製の Discord 翻訳 Bot です。チャンネル間の自動翻訳、国旗リアクション翻訳、`/translate`、`/detect` に対応しています。翻訳先は Google Cloud Translation、DeepL、Azure Translator、Gemini、OpenAI、OpenAI 互換APIから1つ選びます。
+A Discord translation bot written in Go. It supports automatic translation between channels, flag-reaction translations, and the `/translate` and `/detect` commands. Choose one translation provider: Google Cloud Translation, DeepL, Azure Translator, Gemini, OpenAI, or an OpenAI-compatible API.
 
-## セットアップ
+## Setup
 
-1. `.env.example` を `.env` にコピーし、Discord Bot トークンと選んだ翻訳プロバイダの認証情報を設定します。
-2. `config.example.yml` を `config.yml` にコピーします。
-3. `go build -o discord-translator-bot .` を実行し、`./discord-translator-bot` で起動します。
+1. Copy `.env.example` to `.env`, then set your Discord bot token and credentials for the translation provider you chose.
+2. Copy `config.example.yml` to `config.yml`.
+3. Build and run the bot:
 
-`.env` の環境変数はシェルやサービスから渡された環境変数より優先度が低く、既存の環境変数を上書きしません。`ENV_FILE` と `CONFIG_FILE` で読み込むファイルを変更できます。`TRANSLATION_PROVIDER` の既定値は `google` です。未対応のプロバイダや必須設定の不足があると起動時にエラーになります。
+   ```sh
+   go build -o discord-translator-bot .
+   ./discord-translator-bot
+   ```
 
-### プロバイダの設定
+Variables from `.env` have lower precedence than variables provided by the shell or service, so they do not overwrite existing environment variables. Set `ENV_FILE` and `CONFIG_FILE` to use different files. The default value of `TRANSLATION_PROVIDER` is `google`. The bot exits with an error at startup if the provider is unsupported or a required setting is missing.
 
-`.env.example` に全プロバイダの変数名と記入例があります。利用するプロバイダの欄だけを設定してください。
+### Translation providers
 
-| `TRANSLATION_PROVIDER` | 必須の環境変数 |
+`.env.example` lists the environment variables and example values for every provider. Configure only the section for the provider you use.
+
+| `TRANSLATION_PROVIDER` | Required environment variables |
 |---|---|
 | `google` | `GOOGLE_TRANSLATE_API_KEY` |
 | `deepl` | `DEEPL_AUTH_KEY` |
-| `azure` | `AZURE_TRANSLATOR_KEY`。リソースによって `AZURE_TRANSLATOR_REGION` も必要です |
+| `azure` | `AZURE_TRANSLATOR_KEY`; some resources also require `AZURE_TRANSLATOR_REGION` |
 | `gemini` | `GEMINI_API_KEY`, `GEMINI_MODEL` |
 | `openai` | `OPENAI_API_KEY`, `OPENAI_MODEL` |
 | `openai-compatible` | `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_MODEL`, `OPENAI_COMPATIBLE_BASE_URL` |
 
-DeepL は既定で Free API を使います。Pro APIの場合は `DEEPL_API_URL` を設定してください。Google、Azure、OpenAI、GeminiのカスタムURLも `.env.example` を参照してください。
+DeepL uses its Free API by default. Set `DEEPL_API_URL` to use the Pro API. See `.env.example` for custom URL settings for Google, Azure, OpenAI, and Gemini.
 
 ## `config.yml`
 
-`config.example.yml` をコピーして、サーバーに合わせたチャンネルIDを設定します。IDはDiscordの開発者モードを有効にしてチャンネルを右クリックし、「チャンネルIDをコピー」で取得できます。
+Copy `config.example.yml` and set channel IDs for your server. To copy an ID, enable Developer Mode in Discord, right-click a channel, and select **Copy Channel ID**.
 
-- `channel_mappings`: `source_channel_id` から `target_channel_id` へ自動翻訳します。翻訳先は英語です。
-- `excluded_channel_ids`: Botが翻訳しないチャンネルです。ここにフォーラムIDを指定すると、そのフォーラム内の投稿スレッドも対象外になります。スラッシュコマンドも無効になります。
-- `flag_map`: 国旗絵文字から翻訳先言語コードへの対応です。絵文字は完全一致で判定します。
-- `max_per_minute`: 自動翻訳とリアクション翻訳の合計上限です。`MAX_PER_MINUTE` 環境変数で上書きできます。
+- `channel_mappings`: Automatically translates messages from `source_channel_id` to `target_channel_id`. The target language is English.
+- `excluded_channel_ids`: Channels the bot will not translate. If you specify a forum channel, its post threads are also excluded and slash commands are disabled there.
+- `flag_map`: Maps flag emoji to target language codes. Emoji are matched exactly.
+- `max_per_minute`: Combined rate limit for automatic and reaction translations. Override it with the `MAX_PER_MINUTE` environment variable.
 
-サーバー管理権限を持つ人は `/reaction-translate` でチャンネルごとのリアクション翻訳を切り替えたり、状態を確認できます。例: `/reaction-translate disable channel:#雑談`、`/reaction-translate enable channel:#general`、`/reaction-translate status channel:#general`。設定は `reaction_translation_disabled_channel_ids` に保存されます。このコマンドで設定する場合、Botが `config.yml` を書き込める必要があります。`excluded_channel_ids` に登録されたチャンネルでは、リアクション翻訳も常に無効です。
+Server administrators can use `/reaction-translate` to enable or disable reaction translations for a channel and check its status. Examples: `/reaction-translate disable channel:#chat`, `/reaction-translate enable channel:#general`, and `/reaction-translate status channel:#general`. The setting is saved in `reaction_translation_disabled_channel_ids`. The bot must be able to write to `config.yml` for this command to save changes. Reaction translations are always disabled in channels listed in `excluded_channel_ids`.
 
-マッピングの送信元にフォーラムを指定すると、フォーラム投稿内のメッセージを翻訳します。送信先が通常のチャンネルならそこへ転送し、送信先がフォーラムならメッセージごとに翻訳投稿を作成します。フォーラム投稿の作成には、Botに投稿先フォーラムで投稿権限が必要です。
+You can use a forum as the source in a channel mapping. Messages in forum posts are translated. If the destination is a regular channel, translations are sent there. If the destination is a forum, the bot creates a translated post for each message. The bot needs permission to create posts in the destination forum.
 
 ## Docker
 
-公開イメージは [`nanosize23/discord-translator-bot`](https://hub.docker.com/r/nanosize23/discord-translator-bot) です。`compose.yaml` はこのイメージを使います。`.env` やAPIキーはイメージに含まれません。
+The public image is [`nanosize23/discord-translator-bot`](https://hub.docker.com/r/nanosize23/discord-translator-bot). `compose.yaml` uses this image. Your `.env` file and API keys are not included in the image.
 
 ### Docker Compose
 
 ```sh
 cp .env.example .env
-# .env に DISCORD_TOKEN と選択したプロバイダのキーを設定
+# Set DISCORD_TOKEN and the key for your chosen provider in .env.
 docker compose pull
 docker compose up -d
 docker compose logs -f
@@ -58,22 +63,22 @@ docker compose logs -f
 
 ### Portainer
 
-1. **Stacks → Add stack → Repository** を開き、このGitHubリポジトリとブランチ `main` を指定します。
-2. Compose pathに `compose.yaml` を入力します。
-3. **Environment variables** に `DISCORD_TOKEN`、`TRANSLATION_PROVIDER`、選んだ翻訳プロバイダのAPIキーを登録してデプロイします。
+1. Open **Stacks → Add stack → Repository**, then enter this GitHub repository and the `main` branch.
+2. Set the Compose path to `compose.yaml`.
+3. Add `DISCORD_TOKEN`, `TRANSLATION_PROVIDER`, and the API key for your chosen provider under **Environment variables**, then deploy the stack.
 
-プロバイダ名と必須キーは上の「プロバイダの設定」表を参照してください。Portainerはこのリポジトリの `.env` を自動では読み込まないため、値はStackの環境変数として設定します。`bot-config` 名前付きボリュームが設定ファイルを保持し、コンテナを更新しても設定は残ります。
+See the provider table above for the required variables. Portainer does not load this repository's `.env` file automatically, so add the values as stack environment variables. The named `bot-config` volume stores the configuration and keeps it when the container is updated.
 
-新しいイメージを反映する場合はStackの **Pull and redeploy** を実行します。Docker Composeでは `docker compose pull && docker compose up -d` を実行してください。
+To apply a new image in Portainer, select **Pull and redeploy**. With Docker Compose, run `docker compose pull && docker compose up -d`.
 
-新しい `bot-config` ボリュームはイメージ内の `config.example.yml` から初期化されます。既存の `config.yml` を使う場合は、初回起動前に内容をボリュームへコピーしてください。`.env` や実際の設定ファイルをイメージに焼き込まないでください。
+A new `bot-config` volume is initialized from `config.example.yml` in the image. If you want to use an existing `config.yml`, copy it into the volume before the first start. Do not bake `.env` files or real configuration files into the image.
 
-Discord Developer PortalでMessage Content Intentを有効にしてください。Botには対象チャンネルの閲覧、メッセージ履歴の閲覧、メッセージ送信権限が必要です。フォーラムへの翻訳投稿にはフォーラム投稿権限も必要です。
-
-## ライセンス
-
-このプロジェクトは [GNU General Public License v3.0 only](LICENSE) の下で公開しています。
+Enable **Message Content Intent** in the Discord Developer Portal. The bot needs permission to view the target channels, read message history, and send messages. It also needs permission to create posts when translating to a forum.
 
 ## systemd
 
-サービスファイルは `/opt/discord_translator_bot` に配置する前提です。`.env` と `config.yml` を同ディレクトリに作り、バイナリをビルドしてからサービスを有効にしてください。実行ユーザー `discordbot` がバイナリ、設定ファイル、作業ディレクトリを読み取れる必要があります。
+The service file assumes the application is installed at `/opt/discord_translator_bot`. Create `.env` and `config.yml` in that directory, then build the binary and enable the service. The `discordbot` user must be able to read the binary and configuration files and access the working directory.
+
+## License
+
+This project is licensed under the [GNU General Public License v3.0 only](LICENSE).
