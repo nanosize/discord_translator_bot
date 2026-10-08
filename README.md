@@ -6,22 +6,74 @@
 
 A Discord translation bot written in Go. It supports automatic translation between channels, flag-reaction translations, and the `/translate` and `/detect` commands. Choose one translation provider: Google Cloud Translation, DeepL, Azure Translator, Gemini, OpenAI, or an OpenAI-compatible API.
 
-## Setup
+## Quick start with Docker Compose
 
-1. Copy `.env.example` to `.env`, then set your Discord bot token and credentials for the translation provider you chose.
-2. Copy `config.example.yml` to `config.yml`.
-3. Build and run the bot:
+### Requirements
 
-   ```sh
-   go build -o discord-translator-bot .
-   ./discord-translator-bot
-   ```
+- Docker Engine with the Docker Compose plugin
+- A Discord bot token with **Message Content Intent** enabled
+- An API key for one supported translation provider
 
-Variables from `.env` have lower precedence than variables provided by the shell or service, so they do not overwrite existing environment variables. Set `ENV_FILE` and `CONFIG_FILE` to use different files. The default value of `TRANSLATION_PROVIDER` is `google`. The bot exits with an error at startup if the provider is unsupported or a required setting is missing.
+### 1. Download the project and create the configuration files
 
-### Translation providers
+```sh
+git clone https://github.com/nanosize/discord_translator_bot.git
+cd discord_translator_bot
+cp .env.example .env
+cp config.example.yml config.yml
+```
 
-`.env.example` lists the environment variables and example values for every provider. Configure only the section for the provider you use.
+### 2. Set your token and translation provider
+
+Open `.env` and set `DISCORD_TOKEN`. `TRANSLATION_PROVIDER` defaults to `google`; add the API key required for the provider you want to use. The provider table below lists each required variable.
+
+For example, with Google Cloud Translation:
+
+```dotenv
+DISCORD_TOKEN=your-discord-bot-token
+TRANSLATION_PROVIDER=google
+GOOGLE_TRANSLATE_API_KEY=your-google-translate-api-key
+```
+
+Do not commit `.env` or share it publicly. It contains your bot token and provider credentials.
+
+### 3. Set channel IDs
+
+Open `config.yml` and add the channel mappings for your Discord server. To copy a channel ID, enable **Developer Mode** in Discord, right-click the channel, and select **Copy Channel ID**.
+
+```yaml
+channel_mappings:
+  - source_channel_id: 123456789012345678
+    target_channel_id: 234567890123456789
+```
+
+Replace the example IDs with your own channel IDs. The bot translates mapped messages into English. See [`config.example.yml`](config.example.yml) for the complete configuration format.
+
+### 4. Start the bot
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+Compose creates a persistent `bot-config` volume and initializes it from the example configuration included in the image. Copy your edited `config.yml` into that volume, then restart the bot to load it:
+
+```sh
+docker compose cp ./config.yml discord-translator-bot:/data/config.yml
+docker compose restart discord-translator-bot
+```
+
+Follow the startup log and confirm the bot connected successfully:
+
+```sh
+docker compose logs -f discord-translator-bot
+```
+
+The bot needs permission to view the configured channels, read message history, and send messages. It also needs permission to create posts if a destination is a forum channel.
+
+## Translation providers
+
+Set `TRANSLATION_PROVIDER` to one provider and configure the required variables in `.env`.
 
 | `TRANSLATION_PROVIDER` | Required environment variables |
 |---|---|
@@ -32,11 +84,9 @@ Variables from `.env` have lower precedence than variables provided by the shell
 | `openai` | `OPENAI_API_KEY`, `OPENAI_MODEL` |
 | `openai-compatible` | `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_MODEL`, `OPENAI_COMPATIBLE_BASE_URL` |
 
-DeepL uses its Free API by default. Set `DEEPL_API_URL` to use the Pro API. See `.env.example` for custom URL settings for Google, Azure, OpenAI, and Gemini.
+DeepL uses its Free API by default. Set `DEEPL_API_URL` to use the Pro API. See `.env.example` for custom URL settings for Google, Azure, OpenAI, and Gemini. Variables already set in the shell or service take precedence over values in `.env`.
 
-## `config.yml`
-
-Copy `config.example.yml` and set channel IDs for your server. To copy an ID, enable Developer Mode in Discord, right-click a channel, and select **Copy Channel ID**.
+## Configuration options
 
 - `channel_mappings`: Automatically translates messages from `source_channel_id` to `target_channel_id`. The target language is English.
 - `excluded_channel_ids`: Channels the bot will not translate. If you specify a forum channel, its post threads are also excluded and slash commands are disabled there.
@@ -47,18 +97,22 @@ Server administrators can use `/reaction-translate` to enable or disable reactio
 
 You can use a forum as the source in a channel mapping. Messages in forum posts are translated. If the destination is a regular channel, translations are sent there. If the destination is a forum, the bot creates a translated post for each message. The bot needs permission to create posts in the destination forum.
 
-## Docker
+## Docker Hub image
 
-The public image is [`nanosize23/discord-translator-bot`](https://hub.docker.com/r/nanosize23/discord-translator-bot). `compose.yaml` uses this image. Your `.env` file and API keys are not included in the image.
+The public image is [`nanosize23/discord-translator-bot`](https://hub.docker.com/r/nanosize23/discord-translator-bot). `compose.yaml` uses this image. The image does not contain your `.env` file or API keys.
 
-### Docker Compose
+### Updating the image
 
 ```sh
-cp .env.example .env
-# Set DISCORD_TOKEN and the key for your chosen provider in .env.
 docker compose pull
 docker compose up -d
-docker compose logs -f
+```
+
+The `bot-config` volume keeps your configuration when the container is updated. To change `config.yml`, copy the edited file into the volume and restart the service:
+
+```sh
+docker compose cp ./config.yml discord-translator-bot:/data/config.yml
+docker compose restart discord-translator-bot
 ```
 
 ### Portainer
@@ -67,13 +121,20 @@ docker compose logs -f
 2. Set the Compose path to `compose.yaml`.
 3. Add `DISCORD_TOKEN`, `TRANSLATION_PROVIDER`, and the API key for your chosen provider under **Environment variables**, then deploy the stack.
 
-See the provider table above for the required variables. Portainer does not load this repository's `.env` file automatically, so add the values as stack environment variables. The named `bot-config` volume stores the configuration and keeps it when the container is updated.
+Portainer does not load this repository's `.env` file automatically, so add the values as stack environment variables. To use a custom `config.yml`, copy it into the `bot-config` volume before restarting the stack. A new volume is initialized from `config.example.yml` in the image.
 
-To apply a new image in Portainer, select **Pull and redeploy**. With Docker Compose, run `docker compose pull && docker compose up -d`.
+## Run from source
 
-A new `bot-config` volume is initialized from `config.example.yml` in the image. If you want to use an existing `config.yml`, copy it into the volume before the first start. Do not bake `.env` files or real configuration files into the image.
+1. Copy `.env.example` to `.env` and set `DISCORD_TOKEN` and the credentials for your chosen translation provider.
+2. Copy `config.example.yml` to `config.yml` and set your channel IDs.
+3. Build and run the bot:
 
-Enable **Message Content Intent** in the Discord Developer Portal. The bot needs permission to view the target channels, read message history, and send messages. It also needs permission to create posts when translating to a forum.
+   ```sh
+   go build -o discord-translator-bot .
+   ./discord-translator-bot
+   ```
+
+Set `ENV_FILE` and `CONFIG_FILE` to use different files. The default value of `TRANSLATION_PROVIDER` is `google`. The bot exits with an error at startup if the provider is unsupported or a required setting is missing.
 
 ## systemd
 
